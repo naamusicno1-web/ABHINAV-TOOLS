@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Upload, Github, Loader } from 'lucide-react';
+import { Upload, Loader, AlertCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 interface FileUploadFormProps {
-  onUpload: (formData: FormData) => void;
+  onUpload: (fileData: { file: File; name: string; description: string; category: string }) => void;
 }
 
 const FileUploadForm: React.FC<FileUploadFormProps> = ({ onUpload }) => {
@@ -13,61 +13,53 @@ const FileUploadForm: React.FC<FileUploadFormProps> = ({ onUpload }) => {
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState('tools');
   const [loading, setLoading] = useState(false);
-  const [useGithub, setUseGithub] = useState(false);
-  const [githubUrl, setGithubUrl] = useState('');
+
+  const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files?.[0]) {
-      setFile(e.target.files[0]);
-      setName(e.target.files[0].name.split('.')[0]);
+    const selectedFile = e.target.files?.[0];
+    
+    if (!selectedFile) return;
+
+    if (selectedFile.size > MAX_FILE_SIZE) {
+      toast.error('File size must be less than 5MB');
+      return;
     }
+
+    setFile(selectedFile);
+    setName(selectedFile.name.split('.')[0]);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!file && !useGithub) {
-      toast.error('Please select a file or GitHub URL');
+    if (!file) {
+      toast.error('Please select a file');
+      return;
+    }
+
+    if (!name.trim()) {
+      toast.error('Please enter a file name');
       return;
     }
 
     setLoading(true);
     try {
-      if (useGithub) {
-        // Handle GitHub upload
-        const response = await fetch('/api/files/upload-from-repo', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${localStorage.getItem('adminToken')}`
-          },
-          body: JSON.stringify({
-            githubUrl,
-            name: name || 'GitHub File',
-            description,
-            category
-          })
-        });
-
-        if (!response.ok) throw new Error('Upload failed');
-        toast.success('File from GitHub uploaded! All members will see it.');
-      } else {
-        // Handle file upload
-        const formData = new FormData();
-        formData.append('file', file!);
-        formData.append('name', name);
-        formData.append('description', description);
-        formData.append('category', category);
-        
-        onUpload(formData);
-      }
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      onUpload({
+        file,
+        name: name.trim(),
+        description: description.trim(),
+        category
+      });
 
       setFile(null);
       setName('');
       setDescription('');
       setCategory('tools');
-      setGithubUrl('');
-      setUseGithub(false);
+    } catch (error) {
+      toast.error('Upload failed');
     } finally {
       setLoading(false);
     }
@@ -86,63 +78,27 @@ const FileUploadForm: React.FC<FileUploadFormProps> = ({ onUpload }) => {
         </h2>
 
         <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Toggle Upload Method */}
-          <div className="flex gap-4 mb-6">
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="radio"
-                checked={!useGithub}
-                onChange={() => setUseGithub(false)}
-                className="w-4 h-4"
-              />
-              <span className="text-white">Direct Upload</span>
-            </label>
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="radio"
-                checked={useGithub}
-                onChange={() => setUseGithub(true)}
-                className="w-4 h-4"
-              />
-              <span className="text-white">From GitHub</span>
+          {/* File Selection */}
+          <div className="bg-slate-700/30 border-2 border-dashed border-purple-500/30 rounded-lg p-8 text-center hover:border-purple-500/60 transition cursor-pointer group">
+            <input
+              type="file"
+              onChange={handleFileChange}
+              className="hidden"
+              id="file-input"
+              disabled={loading}
+            />
+            <label htmlFor="file-input" className="cursor-pointer block">
+              <div className="mb-2">
+                <Upload size={40} className="mx-auto text-purple-400 group-hover:text-purple-300 transition" />
+              </div>
+              <p className="text-white font-medium">
+                {file ? file.name : 'Click to select file or drag and drop'}
+              </p>
+              <p className="text-gray-400 text-sm mt-1">
+                Maximum size: 5MB
+              </p>
             </label>
           </div>
-
-          {/* File Selection */}
-          {!useGithub ? (
-            <div className="bg-slate-700/30 border-2 border-dashed border-purple-500/30 rounded-lg p-8 text-center hover:border-purple-500/60 transition cursor-pointer group">
-              <input
-                type="file"
-                onChange={handleFileChange}
-                className="hidden"
-                id="file-input"
-              />
-              <label htmlFor="file-input" className="cursor-pointer block">
-                <div className="mb-2">
-                  <Upload size={40} className="mx-auto text-purple-400 group-hover:text-purple-300 transition" />
-                </div>
-                <p className="text-white font-medium">
-                  {file ? file.name : 'Click to select file or drag and drop'}
-                </p>
-                <p className="text-gray-400 text-sm mt-1">
-                  Support: PDF, ZIP, Images, Documents
-                </p>
-              </label>
-            </div>
-          ) : (
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                GitHub Repository URL
-              </label>
-              <input
-                type="url"
-                value={githubUrl}
-                onChange={(e) => setGithubUrl(e.target.value)}
-                placeholder="https://github.com/owner/repo"
-                className="w-full bg-slate-700/50 border border-purple-500/30 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20"
-              />
-            </div>
-          )}
 
           {/* File Name */}
           <div>
@@ -156,20 +112,22 @@ const FileUploadForm: React.FC<FileUploadFormProps> = ({ onUpload }) => {
               placeholder="Enter file name"
               className="w-full bg-slate-700/50 border border-purple-500/30 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20"
               required
+              disabled={loading}
             />
           </div>
 
           {/* Description */}
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-2">
-              Description
+              Description & README
             </label>
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="Enter file description (README content)"
+              placeholder="Enter file description, features, and usage instructions..."
               rows={4}
               className="w-full bg-slate-700/50 border border-purple-500/30 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 resize-none"
+              disabled={loading}
             />
           </div>
 
@@ -182,6 +140,7 @@ const FileUploadForm: React.FC<FileUploadFormProps> = ({ onUpload }) => {
               value={category}
               onChange={(e) => setCategory(e.target.value)}
               className="w-full bg-slate-700/50 border border-purple-500/30 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20"
+              disabled={loading}
             >
               <option value="tools">Tools</option>
               <option value="bots">Bots</option>
@@ -196,7 +155,7 @@ const FileUploadForm: React.FC<FileUploadFormProps> = ({ onUpload }) => {
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
             type="submit"
-            disabled={loading || (!file && !githubUrl)}
+            disabled={loading || !file || !name}
             className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-bold py-3 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed shadow-lg hover:shadow-xl flex items-center justify-center gap-2"
           >
             {loading ? (
@@ -213,9 +172,18 @@ const FileUploadForm: React.FC<FileUploadFormProps> = ({ onUpload }) => {
           </motion.button>
         </form>
 
-        <p className="text-gray-400 text-sm mt-6 p-4 bg-purple-500/10 rounded-lg border border-purple-500/20">
-          ✨ All members using the site will immediately see this file after upload
-        </p>
+        {/* Info Box */}
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.2 }}
+          className="mt-6 p-4 bg-blue-500/10 rounded-lg border border-blue-500/20 flex gap-3"
+        >
+          <AlertCircle className="text-blue-400 flex-shrink-0" size={20} />
+          <p className="text-blue-300 text-sm">
+            ✨ All members using the site will immediately see this file after upload. The file is stored in your browser's storage.
+          </p>
+        </motion.div>
       </div>
     </motion.div>
   );
